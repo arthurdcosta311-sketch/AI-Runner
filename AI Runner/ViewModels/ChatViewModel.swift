@@ -8,17 +8,27 @@ import SwiftUI
 
 @MainActor
 final class ChatViewModel: ObservableObject {
+    @Published private(set) var conversations: [Conversation] = []
     @Published private(set) var messages: [ChatMessage] = []
+    @Published private(set) var currentConversationID: UUID?
     @Published private(set) var isGenerating = false
+    @Published var showingDrawer = false
     @Published var statusText: String?
     @Published var errorText: String?
 
     private var generationTask: Task<Void, Never>?
     private var pendingUserText = ""
-    private let storageKey = "chatHistory"
+    private var usedWebInCurrent = false
+    private let legacyStorageKey = "chatHistory"
+    private let currentKey = "currentConversationID"
+
+    private static var storageURL: URL {
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("chats.json")
+    }
 
     init() {
-        loadMessages()
+        load()
     }
 
     // MARK: - Sending
@@ -31,9 +41,19 @@ final class ChatViewModel: ObservableObject {
             return
         }
 
+        if currentConversationID == nil {
+            let conversation = Conversation(id: UUID(),
+                                            title: Self.title(for: trimmed),
+                                            messages: [],
+                                            usedWeb: false,
+                                            updatedAt: Date())
+            conversations.insert(conversation, at: 0)
+            currentConversationID = conversation.id
+        }
+
         pendingUserText = trimmed
         messages.append(ChatMessage(role: .user, text: trimmed))
-        saveMessages()
+        saveCurrent()
         errorText = nil
         statusText = "Thinking…"
         isGenerating = true
@@ -53,7 +73,58 @@ final class ChatViewModel: ObservableObject {
     func clearChat() {
         stop()
         messages.removeAll()
-        saveMessages()
+        usedWebInCurrent = false
+        saveCurrent()
+    }
+
+    // MARK: - Conversations drawer
+
+    func select(_ id: UUID) {
+        showingDrawer = false
+        guard id != currentConversationID else { return }
+        stop()
+        saveCurrent()
+        if let conversation = conversations.first(where: { $0.id == id }) {
+            currentConversationID = id
+            messages = conversation.messages
+            usedWebInCurrent = conversation.usedWeb
+        }
+        errorText = nil
+        statusText = nil
+    }
+
+    func newChat() {
+        showingDrawer = false
+        stop()
+        saveCurrent()
+        messages = []
+        currentConversationID = nil
+        usedWebInCurrent = false
+        errorText = nil
+        statusText = nil
+    }
+
+    func delete(_ id: UUID) {
+        if id == currentConversationID {
+            stop()
+            messages = []
+            currentConversationID = nil
+            usedWebInCurrent = false
+        }
+        conversations.removeAll { $0.id == id }
+        persistAll()
+    }
+
+    /// A short title generated from the conversation's first user message.
+    static func title(for text: String) -> String {
+        let flattened = text
+            .replacingOccurrences(of: "\n", with: " ")
+            .components(separatedBy: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+        guard !flattened.isEmpty else { return "New chat" }
+        if flattened.count <= 40 { return flattened }
+        return String(flattened.prefix(40)) + "…"
     }
 
     // MARK: - Conversation loop
@@ -81,6 +152,7 @@ final class ChatViewModel: ObservableObject {
                 if settings.webAccessEnabled, fetchCount < 2, let url = WebTool.extractCommand(from: reply) {
                     statusText = "Fetching \(url.host ?? url.absoluteString)…"
                     fetchCount += 1
+                    usedWebInCurrent = true
                     let clean = WebTool.strippingCommand(from: reply)
                     updateMessage(id: assistant.id, text: clean)
                     do {
@@ -121,7 +193,7 @@ final class ChatViewModel: ObservableObject {
 
         statusText = nil
         isGenerating = false
-        saveMessages()
+        saveCurrent()
     }
 
     // MARK: - Message helpers
@@ -138,14 +210,51 @@ final class ChatViewModel: ObservableObject {
 
     // MARK: - Persistence
 
-    private func loadMessages() {
-        guard let data = UserDefaults.standard.data(forKey: storageKey) else { return }
-        messages = (try? JSONDecoder().decode([ChatMessage].self, from: data)) ?? []
+    private func load() {
+        if let data = try? Data(contentsOf: Self.storageURL),
+           let stored = try? JSONDecoder().decode([Conversation].self, from: data) {
+            conversations = stored
+        } else if let data = UserDefaults.standard.data(forKey: legacyStorageKey),
+                  let old = try? JSONDecoder().decode([ChatMessage].self, from: data),
+                  !old.isEmpty {
+            // One-time migration from the single-chat storage.
+            let title = Self.title(for: old.first(where: { $0.role == .user })?.text ?? "Chat")
+            let conversation = Conversation(id: UUID(), title: title, messages: old, usedWeb: false, updatedAt: Date())
+            conversations = [conversation]
+            currentConversationID = conversation.id
+            messages = old
+            persistAll()
+            UserDefaults.standard.removeObject(forKey: legacyStorageKey)
+        }
+
+        if let idString = UserDefaults.standard.string(forKey: currentKey),
+           let id = UUID(uuidString: idString),
+           let conversation = conversations.first(where: { $0.id == id }) {
+            currentConversationID = id
+            messages = conversation.messages
+            usedWebInCurrent = conversation.usedWeb
+        }
     }
 
-    private func saveMessages() {
-        if let data = try? JSONEncoder().encode(messages) {
-            UserDefaults.standard.set(data, forKey: storageKey)
+    /// Writes the working messages back into the current conversation, then saves everything.
+    private func saveCurrent() {
+        if let id = currentConversationID,
+           let index = conversations.firstIndex(where: { $0.id == id }) {
+            conversations[index].messages = messages
+            conversations[index].updatedAt = Date()
+            conversations[index].usedWeb = conversations[index].usedWeb || usedWebInCurrent
+        }
+        persistAll()
+    }
+
+    private func persistAll() {
+        if let data = try? JSONEncoder().encode(conversations) {
+            try? data.write(to: Self.storageURL, options: .atomic)
+        }
+        if let id = currentConversationID {
+            UserDefaults.standard.set(id.uuidString, forKey: currentKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: currentKey)
         }
     }
 }

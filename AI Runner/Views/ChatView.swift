@@ -24,8 +24,17 @@ struct ChatView: View {
             }
             .background(Color(.systemGroupedBackground).ignoresSafeArea())
             .navigationTitle("AI Runner")
+            .sheet(isPresented: $viewModel.showingDrawer) {
+                ConversationsDrawerView(viewModel: viewModel)
+            }
             .toolbar {
                 ToolbarItemGroup(placement: .topBarLeading) {
+                    Button {
+                        viewModel.showingDrawer = true
+                    } label: {
+                        Image(systemName: "list.bullet.rectangle")
+                    }
+                    .accessibilityLabel("Conversations")
                     Button {
                         settings.webAccessEnabled.toggle()
                     } label: {
