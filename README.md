@@ -19,3 +19,7 @@ GitHub Actions builds the app on every push to `main`: the unsigned IPA is uploa
 ## Development
 
 Open `AI Runner.xcodeproj` in Xcode, or build with the run button in the app you use.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
