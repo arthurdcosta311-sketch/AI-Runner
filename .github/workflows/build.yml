@@ -1,0 +1,62 @@
+name: Build and Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-26
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Pick latest Xcode 26
+        run: |
+          ls /Applications | grep Xcode || true
+          latest=$(ls -d /Applications/Xcode*app | sort -V | tail -n 1)
+          sudo xcode-select -s "$latest"
+          xcodebuild -version
+
+      - name: Build app (unsigned, device)
+        run: |
+          xcodebuild \
+            -project "AI Runner.xcodeproj" \
+            -scheme "AI Runner" \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY= \
+            build
+
+      - name: Package IPA
+        run: |
+          APP_PATH=$(find build/DerivedData/Build/Products -type d -name "AI Runner.app" -path "*Release-iphoneos*" | head -n 1)
+          echo "App at: $APP_PATH"
+          mkdir -p build/Payload
+          cp -R "$APP_PATH" build/Payload/
+          cd build
+          zip -qry ../AI-Runner.ipa Payload
+
+      - name: Upload IPA artifact (Actions tab)
+        uses: actions/upload-artifact@v4
+        with:
+          name: AI-Runner-ipa
+          path: AI-Runner.ipa
+
+      - name: Attach IPA to a release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "build-${{ github.run_number }}" \
+            "AI-Runner.ipa#AI-Runner.ipa" \
+            --title "AI Runner build #${{ github.run_number }}" \
+            --notes "Automated unsigned build of commit ${{ github.sha }}. Install by unpacking and signing with your own Apple ID (e.g. AltStore, Sideloadly)." \
+            --target "${{ github.sha }}" \
+            --repo "${{ github.repository }}"

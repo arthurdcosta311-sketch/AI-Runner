@@ -30,7 +30,7 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		0A0000000000000000000011 /* Exceptions for "AI Runner" folder in "AI Runner" target */ = {
+		0A0000000000000000000011 /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
@@ -43,7 +43,7 @@
 		0A0000000000000000000005 /* AI Runner */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
-				0A0000000000000000000011 /* Exceptions for "AI Runner" folder in "AI Runner" target */,
+				0A0000000000000000000011 /* PBXFileSystemSynchronizedBuildFileExceptionSet */,
 			);
 			path = "AI Runner";
 			sourceTree = "<group>";
@@ -125,6 +125,7 @@
 			);
 			name = "AI Runner";
 			packageProductDependencies = (
+				EE16F994CDE6AC81FB9FDD24 /* SwiftLlama */,
 			);
 			productName = "AI Runner";
 			productReference = 0A0000000000000000000003 /* AI Runner.app */;
@@ -208,6 +209,9 @@
 			);
 			mainGroup = 0A0000000000000000000002;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				93F46076D272F98FBD82013D /* XCRemoteSwiftPackageReference "SwiftLlama" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 0A0000000000000000000004 /* Products */;
 			projectDirPath = "";
@@ -577,6 +581,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		93F46076D272F98FBD82013D /* XCRemoteSwiftPackageReference "SwiftLlama" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/ShenghaiWang/SwiftLlama.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.4.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		EE16F994CDE6AC81FB9FDD24 /* SwiftLlama */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 93F46076D272F98FBD82013D /* XCRemoteSwiftPackageReference "SwiftLlama" */;
+			productName = SwiftLlama;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 0A0000000000000000000001 /* Project object */;
 }
