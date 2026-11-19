@@ -22,6 +22,7 @@ final class ChatViewModel: ObservableObject {
     /// never interrupted mid-decode: llama.cpp aborts the process if a second
     /// decode starts while one is still running.
     private var stopRequested = false
+    private var turnRunner: ChatTurnRunner?
     private var pendingUserText = ""
     private var usedWebInCurrent = false
     private let legacyStorageKey = "chatHistory"
@@ -83,6 +84,7 @@ final class ChatViewModel: ObservableObject {
     func stop() {
         guard isGenerating else { return }
         stopRequested = true
+        turnRunner?.stop()
         statusText = "Stopping…"
     }
 
@@ -148,6 +150,10 @@ final class ChatViewModel: ObservableObject {
     /// Generates a reply. When the reply asks for a tool, the app runs it, feeds the
     /// result back to the model and lets it continue, until it answers without a tool.
     private func runConversation(runner: LlamaRunner, settings: AppSettings) async {
+        let turn = ChatTurnRunner(runner: runner)
+        turnRunner = turn
+        defer { turnRunner = nil }
+
         var toolRounds = 0
         var userMessage = pendingUserText
 
@@ -170,14 +176,10 @@ final class ChatViewModel: ObservableObject {
                 }
 
                 let history = Array(messages.dropLast())
-                let stream = try await runner.generateStream(userMessage: userMessage,
-                                                             history: history,
-                                                             settings: settings)
-                for try await delta in stream {
-                    reply += delta
-                    if !stopRequested {
-                        updateMessage(id: assistant.id, text: reply)
-                    }
+                reply = try await turn.stream(userMessage: userMessage,
+                                              history: history,
+                                              settings: settings) { partial in
+                    updateMessage(id: assistant.id, text: partial)
                 }
 
                 if stopRequested {
