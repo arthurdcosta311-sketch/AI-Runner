@@ -155,6 +155,12 @@ final class ChatViewModel: ObservableObject {
                     updateMessage(id: assistant.id, text: reply)
                 }
 
+                if reply.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    removeMessage(id: assistant.id)
+                    errorText = "The model stopped without writing a reply. It may be too large for this phone's memory, or the conversation may no longer fit its context window. Try a smaller model, or start a new chat."
+                    break
+                }
+
                 let parsed = settings.webAccessEnabled
                     ? ToolParser.parse(reply)
                     : ParsedReply(visibleText: reply.trimmingCharacters(in: .whitespacesAndNewlines), call: nil)

@@ -94,11 +94,16 @@ final class AppSettings: ObservableObject {
     }
 
     func makeConfiguration() -> Configuration {
-        var stopTokens: [String] = []
-        if template == .chatML { stopTokens = ["<|im_end|>"] }
-        if template == .llama { stopTokens = ["[INST]"] }
-        if template == .gemma { stopTokens = ["<end_of_turn>"] }
-        if template == .phi { stopTokens = ["<|end|>"] }
+        let stopTokens: [String]
+        switch template {
+        case .chatML: stopTokens = ["<|im_end|>"]
+        case .llama: stopTokens = ["[INST]", "</s>"]
+        case .llama3: stopTokens = ["<|eot_id|>", "<|end_of_text|>"]
+        case .mistral: stopTokens = ["</s>"]
+        case .gemma: stopTokens = ["<end_of_turn>"]
+        case .phi: stopTokens = ["<|end|>", "<|endoftext|>"]
+        case .alpaca: stopTokens = []
+        }
 
         return Configuration(
             nCTX: max(256, contextSize),

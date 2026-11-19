@@ -9,11 +9,13 @@ struct SettingsView: View {
     @ObservedObject var settings: AppSettings
     @ObservedObject var runner: LlamaRunner
     @Environment(\.dismiss) private var dismiss
+    @StateObject private var github = GitHubViewModel()
     @State private var diagnostics: String = ""
 
     var body: some View {
         NavigationStack {
             Form {
+                githubSection
                 inferenceSection
                 toolsSection
                 integrationsSection
@@ -25,10 +27,35 @@ struct SettingsView: View {
                     Button("Done") { dismiss() }
                 }
             }
+            .task { await github.refresh() }
         }
     }
 
     // MARK: - Sections
+
+    private var githubSection: some View {
+        Section {
+            NavigationLink {
+                GitHubView(model: github)
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: github.isSignedIn ? "person.crop.circle.badge.checkmark" : "person.crop.circle")
+                        .font(.title3)
+                        .foregroundStyle(github.isSignedIn ? Color.appPurple : Color.secondary)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("GitHub")
+                        Text(github.isSignedIn ? "Signed in as @\(github.login ?? "")" : "Signed out")
+                            .font(.caption)
+                            .foregroundStyle(github.isSignedIn ? Color.appPurple : Color.secondary)
+                    }
+                }
+            }
+        } header: {
+            Text("Account")
+        } footer: {
+            Text("Sign in to GitHub to list your projects and clone them into the Projects tab.")
+        }
+    }
 
     private var inferenceSection: some View {
         Section("Inference") {
@@ -76,7 +103,7 @@ struct SettingsView: View {
                 Label("Integrations", systemImage: "puzzlepiece.extension")
             }
         } footer: {
-            Text("Connect GitHub and MCP servers.")
+            Text("Add MCP servers the model can call.")
         }
     }
 

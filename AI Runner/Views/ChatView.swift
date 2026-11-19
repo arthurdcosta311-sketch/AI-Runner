@@ -3,7 +3,9 @@
 //  AI Runner
 //
 
+import Combine
 import SwiftUI
+import UIKit
 
 struct ChatView: View {
     @ObservedObject var runner: LlamaRunner
@@ -12,6 +14,9 @@ struct ChatView: View {
 
     @State private var draft = ""
     @State private var showingSettings = false
+    @State private var showingBrowser = false
+    @FocusState private var inputFocused: Bool
+    @State private var keyboardVisible = false
 
     var body: some View {
         NavigationStack {
@@ -27,6 +32,13 @@ struct ChatView: View {
             .background(Color(.systemGroupedBackground).ignoresSafeArea())
             .animation(.smooth, value: runner.isModelLoaded)
             .animation(.smooth, value: viewModel.statusText)
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+                withAnimation(.smooth(duration: 0.2)) { keyboardVisible = true }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+                withAnimation(.smooth(duration: 0.2)) { keyboardVisible = false }
+            }
+            .hideKeyboardToolbar()
             .navigationTitle(runner.loadedModelName ?? "AI Runner")
             .navigationBarTitleDisplayMode(.inline)
             .sheet(isPresented: $viewModel.showingDrawer) {
@@ -34,6 +46,9 @@ struct ChatView: View {
             }
             .sheet(isPresented: $showingSettings) {
                 SettingsView(settings: settings, runner: runner)
+            }
+            .sheet(isPresented: $showingBrowser) {
+                BrowserView(showsDoneButton: true)
             }
             .toolbar {
                 ToolbarItemGroup(placement: .topBarLeading) {
@@ -51,6 +66,13 @@ struct ChatView: View {
                     }
                     .tint(settings.webAccessEnabled ? .appPurple : .secondary)
                     .accessibilityLabel("Tools")
+
+                    Button {
+                        showingBrowser = true
+                    } label: {
+                        Image(systemName: "globe")
+                    }
+                    .accessibilityLabel("Browser")
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     Button {
@@ -158,10 +180,25 @@ struct ChatView: View {
     private var inputBar: some View {
         HStack(alignment: .bottom, spacing: 10) {
             TextField("Message", text: $draft, axis: .vertical)
+                .focused($inputFocused)
                 .lineLimit(1...5)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
                 .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+
+            if keyboardVisible {
+                Button {
+                    hideKeyboard()
+                } label: {
+                    Image(systemName: "keyboard.chevron.compact.down")
+                        .font(.system(size: 18, weight: .semibold))
+                        .frame(width: 34, height: 34)
+                        .background(Color(.tertiarySystemFill), in: Circle())
+                        .foregroundStyle(.appPurple)
+                }
+                .transition(.scale(scale: 0.6).combined(with: .opacity))
+                .accessibilityLabel("Hide keyboard")
+            }
 
             Button {
                 if viewModel.isGenerating {
@@ -182,6 +219,12 @@ struct ChatView: View {
         .padding(.horizontal)
         .padding(.vertical, 8)
         .background(.bar)
+        .animation(.smooth(duration: 0.2), value: keyboardVisible)
+    }
+
+    private func hideKeyboard() {
+        inputFocused = false
+        dismissKeyboard()
     }
 }
 

@@ -5,12 +5,10 @@
 
 import SwiftUI
 
-/// Connects the models to outside services: GitHub with a personal token, and MCP servers.
+/// Connects the models to MCP servers. GitHub sign in lives in Settings.
 struct IntegrationsView: View {
     @ObservedObject var settings: AppSettings
 
-    @State private var hasGitHub = false
-    @State private var githubDraft = ""
     @State private var showingAddServer = false
     @State private var serverName = ""
     @State private var serverURL = ""
@@ -19,33 +17,6 @@ struct IntegrationsView: View {
 
     var body: some View {
         Form {
-            Section {
-                if hasGitHub {
-                    Label("Token saved in the keychain", systemImage: "checkmark.seal.fill")
-                        .foregroundStyle(.appPurple)
-                    Button("Remove token", role: .destructive) {
-                        ApiKeyManager.shared.remove(key: "GITHUB_TOKEN")
-                        hasGitHub = false
-                    }
-                } else {
-                    SecureField("GitHub personal access token", text: $githubDraft)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                    Button("Save token") {
-                        let token = githubDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-                        guard !token.isEmpty else { return }
-                        ApiKeyManager.shared.set(key: "GITHUB_TOKEN", value: token)
-                        githubDraft = ""
-                        hasGitHub = true
-                    }
-                    .disabled(githubDraft.trimmingCharacters(in: .whitespaces).isEmpty)
-                }
-            } header: {
-                Text("GitHub")
-            } footer: {
-                Text("Lets the model read GitHub with GITHUB followed by an API path, such as repos/apple/swift/issues. Create a token at github.com/settings/tokens.")
-            }
-
             Section {
                 ForEach(settings.mcpServers) { server in
                     VStack(alignment: .leading, spacing: 2) {
@@ -70,9 +41,6 @@ struct IntegrationsView: View {
             }
         }
         .navigationTitle("Integrations")
-        .onAppear {
-            hasGitHub = settings.hasGitHubToken
-        }
         .sheet(isPresented: $showingAddServer) {
             addServerSheet
         }

@@ -2,18 +2,19 @@
 
 A private, on-device AI app for iOS. Chat with a local GGUF language model, let it use tools (web pages, the Focus search engine, HTTP requests, JavaScript and Lua on the phone, GitHub and MCP servers), create images and transcribe audio through Hugging Face, and manage files, all stored on the device.
 
-- **Chat**: streams responses from a local GGUF model (llama.cpp via SwiftLlama, Metal-accelerated). The model can use tools by writing one command on its own line. The app runs it and feeds the result back. Tools are on by default and can be turned off in Settings.
+- **Chat**: streams responses from a local GGUF model (llama.cpp via SwiftLlama, Metal-accelerated). The model is checked before it loads: the app reads the GGUF header, refuses a file that is not a model or that the built-in engine is too old to run (Qwen 3, Llama 4 and other newer architectures), and reports why instead of a bare engine error. The prompt is kept inside the model's context so a long conversation never fails mid-answer. The model can use tools by writing one command on its own line. The app runs it and feeds the result back. Tools are on by default and can be turned off in Settings. While the keyboard is up, a hide-keyboard button sits in the message bar, and every keyboard has a Hide Keyboard button above it.
   - `FETCH <url>` reads a web page.
   - `SEARCH <query>` searches with the Focus engine (the search engine from Focus Lite).
   - `CURL [GET|POST|HEAD] <url>` makes an HTTP request.
   - `RUN JS` and `RUN LUA`, followed by a code block, run the code on the phone.
   - `GITHUB <api path>` calls the GitHub REST API with your token.
   - `MCP <server> <tool> <json>` calls a tool on an MCP server you added.
-- **Models**: download language models from a built-in list (Qwen, Llama, Gemma) or search every GGUF model on Hugging Face. Downloads have no size cap and stream straight to disk. Model files can also be imported from Files.
+- **Models**: download language models from a built-in list (Qwen 2.5, Llama 3.2, Phi-3.5, Gemma 2) or search every GGUF model on Hugging Face. Every listed model loads in the engine the app ships. Downloads have no size limit and stream straight to disk. Model files can also be imported from Files, and one the engine cannot run is marked as such in the list.
 - **Create**: images (Stable Diffusion XL, SD 1.5, FLUX) and speech-to-text (Whisper), through the Hugging Face hosted inference API with your token.
-- **Browser**: the Focus search engine, and a simple web view that keeps no cookies or history.
+- **Browser**: the Focus search engine and a simple web view that keeps no cookies or history, opened from the globe in Chat.
 - **Files**: browse, create, edit and delete files in the app's Documents folder, download files from the internet, and import files from the Files app.
-- **Integrations**: save a GitHub token, and add MCP servers over https.
+- **Projects**: repositories cloned from GitHub, browsed and edited like any folder.
+- **Settings**: sign in to GitHub with a personal access token; it shows whether you are signed in, lists your projects and clones any of them into the Projects tab. Also the inference settings, the tools toggle, MCP servers and the developer options.
 
 ## Hugging Face token
 
@@ -21,7 +22,7 @@ Add your token in the Models tab. It is stored in the keychain. It is used for g
 
 ## Builds
 
-GitHub Actions builds the app on every push to `main`. The unsigned IPA is uploaded to the run's **Actions** tab, and attached to the **v2.0** release on the Releases page, where later builds update the same release.
+GitHub Actions builds the app on every push to `main`. The unsigned IPA is uploaded to the run's **Actions** tab, and attached to the **v2.1** release on the Releases page, where later builds update the same release.
 
 ## Development
 

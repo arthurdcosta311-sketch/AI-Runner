@@ -15,4 +15,11 @@ enum AppFolders {
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         return folder
     }()
+
+    /// Repositories cloned from GitHub, one folder each. Created on first use.
+    static let projects: URL = {
+        let folder = AppFolders.documents.appendingPathComponent("Projects", isDirectory: true)
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        return folder
+    }()
 }

@@ -10,12 +10,18 @@ import SwiftUI
 struct LocalModelFile: Identifiable, Hashable {
     let url: URL
     let sizeBytes: Int64
+    /// "general.architecture" from the GGUF header, when the file has one.
+    let architecture: String?
 
     var id: URL { url }
     var name: String { url.lastPathComponent }
     var isLanguageModel: Bool { url.pathExtension.lowercased() == "gguf" }
     var formattedSize: String {
         ByteCountFormatter.string(fromByteCount: sizeBytes, countStyle: .file)
+    }
+    /// False for a model whose architecture the bundled engine cannot run.
+    var isSupported: Bool {
+        architecture.map { ModelSupport.isSupported($0) } ?? true
     }
 }
 
@@ -41,7 +47,11 @@ final class ModelsViewModel: ObservableObject {
         localFiles = urls
             .map { url -> LocalModelFile in
                 let size = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0
-                return LocalModelFile(url: url, sizeBytes: Int64(size))
+                var architecture: String?
+                if url.pathExtension.lowercased() == "gguf" {
+                    architecture = (try? GGUFHeader.read(from: url))?.architecture
+                }
+                return LocalModelFile(url: url, sizeBytes: Int64(size), architecture: architecture)
             }
             .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }

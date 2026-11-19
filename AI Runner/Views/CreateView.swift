@@ -44,6 +44,7 @@ struct CreateView: View {
             }
             .navigationTitle("Create")
             .animation(.smooth, value: mode)
+            .hideKeyboardToolbar()
         }
     }
 }

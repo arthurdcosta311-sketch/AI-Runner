@@ -120,7 +120,7 @@ struct ModelsView: View {
         } header: {
             Text("Download")
         } footer: {
-            Text("Models download straight to this phone, with no size limit. Tap Load under On this phone to chat with one.")
+            Text("Models download straight to this phone, with no size limit. Tap Load under On this phone to chat with one. Only models the app's built-in engine can run are listed: files from newer architectures, such as Qwen 3 or Llama 4, cannot be loaded here.")
         }
     }
 
@@ -189,6 +189,11 @@ struct ModelsView: View {
                         Text(file.formattedSize)
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                        if let architecture = file.architecture, !file.isSupported {
+                            Text(ModelSupport.reason(for: architecture))
+                                .font(.caption2)
+                                .foregroundStyle(.orange)
+                        }
                     }
                     Spacer()
                     if file.isLanguageModel {
@@ -203,7 +208,7 @@ struct ModelsView: View {
                         }
                         .buttonStyle(.bordered)
                         .tint(.appPurple)
-                        .disabled(isLoaded)
+                        .disabled(isLoaded || !file.isSupported)
                     }
                 }
                 .swipeActions {

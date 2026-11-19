@@ -85,6 +85,7 @@ struct FileEditorView: View {
             }
         }
         .onAppear(perform: load)
+        .hideKeyboardToolbar()
     }
 
     private func load() {

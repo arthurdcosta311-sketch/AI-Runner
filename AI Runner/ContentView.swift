@@ -17,6 +17,16 @@ struct ContentView: View {
                     Label("Chat", systemImage: "bubble.left.and.bubble.right")
                 }
 
+            ProjectsView()
+                .tabItem {
+                    Label("Projects", systemImage: "chevron.left.forwardslash.chevron.right")
+                }
+
+            FilesView()
+                .tabItem {
+                    Label("Files", systemImage: "folder")
+                }
+
             ModelsView(runner: runner, modelsViewModel: modelsViewModel, settings: settings)
                 .tabItem {
                     Label("Models", systemImage: "cube.transparent")
@@ -25,16 +35,6 @@ struct ContentView: View {
             CreateView(settings: settings)
                 .tabItem {
                     Label("Create", systemImage: "sparkles")
-                }
-
-            BrowserView()
-                .tabItem {
-                    Label("Browser", systemImage: "globe")
-                }
-
-            FilesView()
-                .tabItem {
-                    Label("Files", systemImage: "folder")
                 }
         }
         .tint(.appPurple)

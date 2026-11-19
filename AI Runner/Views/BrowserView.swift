@@ -6,14 +6,18 @@
 import SwiftUI
 import WebKit
 
-/// The Browser tab: the Focus search engine, and pages opened in a web view.
+/// The Focus search engine and pages opened in a web view, reached from the globe in Chat.
 /// Nothing is saved: pages use a non-persistent data store, so no cookies or history are kept.
 struct BrowserView: View {
+    @Environment(\.dismiss) private var dismiss
     @State private var query = ""
     @State private var results: [FocusResult] = []
     @State private var page: URL?
     @State private var isSearching = false
     @State private var errorText: String?
+
+    /// Shown when the browser is presented as a sheet.
+    var showsDoneButton = false
 
     var body: some View {
         NavigationStack {
@@ -36,6 +40,11 @@ struct BrowserView: View {
                         } label: {
                             Label("Results", systemImage: "list.bullet")
                         }
+                    }
+                }
+                if showsDoneButton {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") { dismiss() }
                     }
                 }
             }
