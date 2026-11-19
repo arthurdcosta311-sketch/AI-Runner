@@ -116,6 +116,7 @@ struct ModelsView: View {
                 Button("Unload model", role: .destructive) {
                     runner.unload()
                 }
+                .disabled(runner.isGenerating)
             } else if !runner.isLoadingModel {
                 Text("No language model loaded. Download one below, then tap Load.")
                     .foregroundStyle(.secondary)

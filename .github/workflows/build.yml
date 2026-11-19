@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 env:
-  RELEASE_TAG: v2.2
+  RELEASE_TAG: v2.3
 
 jobs:
   build:

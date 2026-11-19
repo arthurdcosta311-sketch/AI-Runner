@@ -5,6 +5,7 @@
 
 import Foundation
 import MachO
+import os
 import SwiftLlama
 
 enum LlamaRunnerError: LocalizedError {
@@ -13,6 +14,9 @@ enum LlamaRunnerError: LocalizedError {
     case notGGUF(String)
     case unsupportedArchitecture(fileName: String, architecture: String)
     case engineFailed(String)
+    case busy
+    case outOfMemory(fileName: String, neededBytes: Int64, availableBytes: Int64)
+    case lowMemory(availableBytes: Int64)
 
     var errorDescription: String? {
         switch self {
@@ -26,6 +30,15 @@ enum LlamaRunnerError: LocalizedError {
             return "\(fileName) is a \(architecture) model, and the engine built into this app is too old to run it. Download one of the models listed in the Models tab instead; those all load here."
         case .engineFailed(let fileName):
             return "\(fileName) could not be loaded. The file may be incomplete or damaged, or the model may be too large for this phone's memory. Delete it, download it again, or try a smaller model."
+        case .busy:
+            return "The model is still working on the previous answer. Wait for it to finish, then try again."
+        case .outOfMemory(let fileName, let neededBytes, let availableBytes):
+            let needed = ByteCountFormatter.string(fromByteCount: neededBytes, countStyle: .memory)
+            let available = ByteCountFormatter.string(fromByteCount: availableBytes, countStyle: .memory)
+            return "\(fileName) needs about \(needed) of memory to load and run, but only \(available) is free for this app right now. Close other apps, or choose a smaller model."
+        case .lowMemory(let availableBytes):
+            let available = ByteCountFormatter.string(fromByteCount: availableBytes, countStyle: .memory)
+            return "Only \(available) of memory is free, too little to run the model. Close other apps and try again."
         }
     }
 }
@@ -43,9 +56,16 @@ final class LlamaRunner: ObservableObject {
     @Published private(set) var loadingModelName: String?
     @Published private(set) var loadedModelName: String?
     @Published private(set) var lastDiagnostics: String = ""
+    /// True while a reply is being generated, so nothing else touches the engine.
+    @Published var isGenerating = false
 
     private var llama: SwiftLlama?
     private var loadedPath: String?
+
+    /// Live memory the process can still allocate, in bytes (0 when unknown).
+    static var availableMemory: Int64 {
+        Int64(os_proc_available_memory())
+    }
 
     // MARK: - Model lifecycle
 
@@ -56,7 +76,7 @@ final class LlamaRunner: ObservableObject {
     /// instead of freezing for the seconds a multi-gigabyte model takes to load.
     func loadModel(at url: URL, settings: AppSettings) async throws {
         if isModelLoaded, loadedPath == url.path { return }
-        if isLoadingModel { return }
+        if isLoadingModel || isGenerating { throw LlamaRunnerError.busy }
 
         let name = url.lastPathComponent
         guard FileManager.default.fileExists(atPath: url.path) else {
@@ -72,6 +92,20 @@ final class LlamaRunner: ObservableObject {
 
         if let architecture = header.architecture, !ModelSupport.isSupported(architecture) {
             throw LlamaRunnerError.unsupportedArchitecture(fileName: name, architecture: architecture)
+        }
+
+        // Refuse a load that would be killed for memory, the way ios-local-llm's
+        // MemoryAdvisor does: weights, the KV cache and Metal buffers need well
+        // over the file's size, plus headroom for the app itself.
+        let fileSize = Int64((try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0)
+        if fileSize > 0 {
+            let needed = Int64(Double(fileSize) * 1.3) + 500_000_000
+            let available = Self.availableMemory
+            if available > 0, available < needed {
+                throw LlamaRunnerError.outOfMemory(fileName: name,
+                                                   neededBytes: needed,
+                                                   availableBytes: available)
+            }
         }
 
         // Release the previous engine first so its weights are not held while
@@ -127,6 +161,16 @@ final class LlamaRunner: ObservableObject {
         guard let llama else {
             throw LlamaRunnerError.noModel
         }
+        guard !isGenerating else {
+            throw LlamaRunnerError.busy
+        }
+
+        // Running the model needs room for the compute graph, so a nearly full
+        // process is better refused than left to be killed mid-answer.
+        let available = Self.availableMemory
+        if available > 0, available < 150_000_000 {
+            throw LlamaRunnerError.lowMemory(availableBytes: available)
+        }
 
         let context = max(256, settings.contextSize)
         let replyTokens = max(64, min(settings.maxTokens, context / 2))
@@ -156,7 +200,35 @@ final class LlamaRunner: ObservableObject {
                             userMessage: user,
                             history: chatHistory)
 
-        return try await llama.start(for: prompt)
+        let upstream: AsyncThrowingStream<String, Error>
+        isGenerating = true
+        do {
+            upstream = try await llama.start(for: prompt)
+        } catch {
+            isGenerating = false
+            throw error
+        }
+
+        // Keep the engine latched as busy for as long as the reply streams, so a
+        // second send can never start a decode while llama.cpp is still working:
+        // two concurrent decodes on one context abort the process.
+        return AsyncThrowingStream { continuation in
+            Task {
+                defer {
+                    DispatchQueue.main.async {
+                        self.isGenerating = false
+                    }
+                }
+                do {
+                    for try await delta in upstream {
+                        continuation.yield(delta)
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
     }
 
     /// Pairs consecutive user/assistant messages into the engine's history format,

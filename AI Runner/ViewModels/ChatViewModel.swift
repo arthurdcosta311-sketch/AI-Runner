@@ -5,6 +5,7 @@
 
 import Foundation
 import SwiftUI
+import UIKit
 
 @MainActor
 final class ChatViewModel: ObservableObject {
@@ -17,6 +18,10 @@ final class ChatViewModel: ObservableObject {
     @Published var errorText: String?
 
     private var generationTask: Task<Void, Never>?
+    /// Set when the user taps Stop. The reply keeps draining so the engine is
+    /// never interrupted mid-decode: llama.cpp aborts the process if a second
+    /// decode starts while one is still running.
+    private var stopRequested = false
     private var pendingUserText = ""
     private var usedWebInCurrent = false
     private let legacyStorageKey = "chatHistory"
@@ -72,11 +77,13 @@ final class ChatViewModel: ObservableObject {
         }
     }
 
+    /// Asks the reply to stop. The run keeps draining the engine's stream, so a
+    /// new message can never start while llama.cpp is still decoding; the send
+    /// button stays disabled until the engine has finished.
     func stop() {
-        generationTask?.cancel()
-        generationTask = nil
-        isGenerating = false
-        statusText = nil
+        guard isGenerating else { return }
+        stopRequested = true
+        statusText = "Stopping…"
     }
 
     func clearChat() {
@@ -150,13 +157,37 @@ final class ChatViewModel: ObservableObject {
             messages.append(assistant)
 
             do {
+                // llama.cpp submits Metal work that iOS aborts if the app is not
+                // in the foreground, so never start a reply in the background.
+                if UIApplication.shared.applicationState != .active {
+                    removeMessage(id: assistant.id)
+                    errorText = "The app went to the background. Tap Send to try again."
+                    break
+                }
+                if stopRequested {
+                    removeMessage(id: assistant.id)
+                    break
+                }
+
                 let history = Array(messages.dropLast())
                 let stream = try await runner.generateStream(userMessage: userMessage,
                                                              history: history,
                                                              settings: settings)
                 for try await delta in stream {
                     reply += delta
-                    updateMessage(id: assistant.id, text: reply)
+                    if !stopRequested {
+                        updateMessage(id: assistant.id, text: reply)
+                    }
+                }
+
+                if stopRequested {
+                    let kept = reply.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if kept.isEmpty {
+                        removeMessage(id: assistant.id)
+                    } else {
+                        updateMessage(id: assistant.id, text: kept)
+                    }
+                    break
                 }
 
                 if reply.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -195,6 +226,7 @@ final class ChatViewModel: ObservableObject {
             }
         }
 
+        stopRequested = false
         statusText = nil
         isGenerating = false
         saveCurrent()

@@ -2,7 +2,7 @@
 
 A private, on-device AI app for iOS. Chat with a local GGUF language model, let it use tools (web pages, the Focus search engine, HTTP requests, JavaScript and Lua on the phone, GitHub and MCP servers), create images and transcribe audio through Hugging Face, and manage files, all stored on the device.
 
-- **Chat**: streams responses from a local GGUF model (llama.cpp via SwiftLlama, Metal-accelerated). Loading runs off the main thread, so the app stays responsive and shows progress while the weights are mapped instead of freezing. The model is checked before it loads: the app reads the GGUF header, refuses a file that is not a model or that the built-in engine is too old to run (Qwen 3, Llama 4 and other newer architectures), and reports why instead of a bare engine error. The prompt is kept inside the model's context so a long conversation never fails mid-answer. The model can use tools by writing one command on its own line. The app runs it and feeds the result back. Tools are on by default and can be turned off in Settings. While the keyboard is up, a hide-keyboard button sits in the message bar, and every keyboard has a Hide Keyboard button above it.
+- **Chat**: streams responses from a local GGUF model (llama.cpp via SwiftLlama, Metal-accelerated). Loading runs off the main thread, so the app stays responsive and shows progress while the weights are mapped instead of freezing. Loads and replies are gated on free memory, the app refuses to start a reply in the background (iOS aborts llama.cpp's Metal work there), and a reply is never interrupted mid-decode: Stop drains the current answer so the next message can't start a second decode on the same context. The model is checked before it loads: the app reads the GGUF header, refuses a file that is not a model or that the built-in engine is too old to run (Qwen 3, Llama 4 and other newer architectures), and reports why instead of a bare engine error. The prompt is kept inside the model's context so a long conversation never fails mid-answer. The model can use tools by writing one command on its own line. The app runs it and feeds the result back. Tools are on by default and can be turned off in Settings. While the keyboard is up, a hide-keyboard button sits in the message bar, and every keyboard has a Hide Keyboard button above it.
   - `FETCH <url>` reads a web page.
   - `SEARCH <query>` searches with the Focus engine (the search engine from Focus Lite).
   - `CURL [GET|POST|HEAD] <url>` makes an HTTP request.
@@ -22,7 +22,7 @@ Add your token in the Models tab. It is stored in the keychain. It is used for g
 
 ## Builds
 
-GitHub Actions builds the app on every push to `main`. The unsigned IPA is uploaded to the run's **Actions** tab, and attached to the **v2.2** release on the Releases page, where later builds update the same release.
+GitHub Actions builds the app on every push to `main`. The unsigned IPA is uploaded to the run's **Actions** tab, and attached to the **v2.3** release on the Releases page, where later builds update the same release.
 
 ## Development
 
