@@ -200,14 +200,8 @@ final class LlamaRunner: ObservableObject {
                             userMessage: user,
                             history: chatHistory)
 
-        let upstream: AsyncThrowingStream<String, Error>
         isGenerating = true
-        do {
-            upstream = try await llama.start(for: prompt)
-        } catch {
-            isGenerating = false
-            throw error
-        }
+        let upstream = await llama.start(for: prompt)
 
         // Keep the engine latched as busy for as long as the reply streams, so a
         // second send can never start a decode while llama.cpp is still working:

@@ -179,7 +179,7 @@ final class ChatViewModel: ObservableObject {
                 reply = try await turn.stream(userMessage: userMessage,
                                               history: history,
                                               settings: settings) { partial in
-                    updateMessage(id: assistant.id, text: partial)
+                    self.updateMessage(id: assistant.id, text: partial)
                 }
 
                 if stopRequested {
