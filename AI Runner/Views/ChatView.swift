@@ -11,21 +11,29 @@ struct ChatView: View {
     @StateObject private var viewModel = ChatViewModel()
 
     @State private var draft = ""
+    @State private var showingSettings = false
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
                 if !runner.isModelLoaded {
                     loadPromptBanner
+                        .transition(.move(edge: .top).combined(with: .opacity))
                 }
                 messageList
                 statusFooter
                 inputBar
             }
             .background(Color(.systemGroupedBackground).ignoresSafeArea())
-            .navigationTitle("AI Runner")
+            .animation(.smooth, value: runner.isModelLoaded)
+            .animation(.smooth, value: viewModel.statusText)
+            .navigationTitle(runner.loadedModelName ?? "AI Runner")
+            .navigationBarTitleDisplayMode(.inline)
             .sheet(isPresented: $viewModel.showingDrawer) {
                 ConversationsDrawerView(viewModel: viewModel)
+            }
+            .sheet(isPresented: $showingSettings) {
+                SettingsView(settings: settings, runner: runner)
             }
             .toolbar {
                 ToolbarItemGroup(placement: .topBarLeading) {
@@ -35,13 +43,14 @@ struct ChatView: View {
                         Image(systemName: "list.bullet.rectangle")
                     }
                     .accessibilityLabel("Conversations")
+
                     Button {
                         settings.webAccessEnabled.toggle()
                     } label: {
-                        Image(systemName: settings.webAccessEnabled ? "globe" : "globe.slash")
+                        Image(systemName: settings.webAccessEnabled ? "wrench.and.screwdriver.fill" : "wrench.and.screwdriver")
                     }
-                    .tint(settings.webAccessEnabled ? .appAmber : .secondary)
-                    .accessibilityLabel("Toggle web access")
+                    .tint(settings.webAccessEnabled ? .appPurple : .secondary)
+                    .accessibilityLabel("Tools")
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     Button {
@@ -50,6 +59,13 @@ struct ChatView: View {
                         Image(systemName: "trash")
                     }
                     .accessibilityLabel("Clear chat")
+
+                    Button {
+                        showingSettings = true
+                    } label: {
+                        Image(systemName: "gearshape")
+                    }
+                    .accessibilityLabel("Settings")
                 }
             }
         }
@@ -61,40 +77,60 @@ struct ChatView: View {
         HStack(spacing: 12) {
             Image(systemName: "cube.transparent")
                 .font(.title2)
-                .foregroundStyle(.appAmber)
+                .foregroundStyle(.appPurple)
             VStack(alignment: .leading, spacing: 2) {
                 Text("No model loaded")
                     .font(.subheadline.weight(.semibold))
-                Text("Open the Models tab and load a GGUF model to start chatting.")
+                Text("Open Models, download a language model and tap Load.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
             Spacer()
         }
         .padding(14)
-        .background(.background.secondary, in: RoundedRectangle(cornerRadius: 14))
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .padding(.horizontal)
         .padding(.top, 8)
     }
 
+    @ViewBuilder
     private var messageList: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(spacing: 12) {
-                    ForEach(viewModel.messages) { message in
-                        MessageBubble(message: message)
-                            .id(message.id)
+        if viewModel.messages.isEmpty {
+            emptyState
+        } else {
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(spacing: 12) {
+                        ForEach(viewModel.messages) { message in
+                            MessageBubble(message: message)
+                                .id(message.id)
+                                .transition(.asymmetric(insertion: .move(edge: .bottom).combined(with: .opacity),
+                                                        removal: .opacity))
+                        }
+                    }
+                    .padding()
+                    .animation(.smooth, value: viewModel.messages.count)
+                }
+                .scrollDismissesKeyboard(.interactively)
+                .onChange(of: viewModel.messages) { _, _ in
+                    if let last = viewModel.messages.last {
+                        withAnimation(.smooth) {
+                            proxy.scrollTo(last.id, anchor: .bottom)
+                        }
                     }
                 }
-                .padding()
             }
-            .onChange(of: viewModel.messages) { _ in
-                if let last = viewModel.messages.last {
-                    withAnimation(.easeOut(duration: 0.2)) {
-                        proxy.scrollTo(last.id, anchor: .bottom)
-                    }
-                }
-            }
+        }
+    }
+
+    private var emptyState: some View {
+        ContentUnavailableView {
+            Label(runner.isModelLoaded ? "Ask anything" : "No model loaded",
+                  systemImage: runner.isModelLoaded ? "sparkles" : "cube.transparent")
+        } description: {
+            Text(runner.isModelLoaded
+                 ? "Tools are \(settings.webAccessEnabled ? "on" : "off"). The model can read pages, search with Focus, run JavaScript and Lua, call GitHub and use MCP servers."
+                 : "Open Models and download a language model to start chatting.")
         }
     }
 
@@ -108,22 +144,24 @@ struct ChatView: View {
                     .foregroundStyle(.secondary)
             }
             .padding(.horizontal)
+            .transition(.opacity.combined(with: .move(edge: .bottom)))
         }
         if let error = viewModel.errorText {
             Text(error)
                 .font(.caption)
                 .foregroundStyle(.red)
                 .padding(.horizontal)
+                .transition(.opacity)
         }
     }
 
     private var inputBar: some View {
-        HStack(spacing: 10) {
+        HStack(alignment: .bottom, spacing: 10) {
             TextField("Message", text: $draft, axis: .vertical)
-                .textFieldStyle(.plain)
-                .lineLimit(1...4)
-                .padding(12)
-                .background(.background, in: RoundedRectangle(cornerRadius: 18))
+                .lineLimit(1...5)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
 
             Button {
                 if viewModel.isGenerating {
@@ -133,9 +171,10 @@ struct ChatView: View {
                     draft = ""
                 }
             } label: {
-                Image(systemName: viewModel.isGenerating ? "stop.fill" : "arrow.up.circle.fill")
-                    .font(.title2)
-                    .foregroundStyle(.appAmber)
+                Image(systemName: viewModel.isGenerating ? "stop.circle.fill" : "arrow.up.circle.fill")
+                    .font(.system(size: 32))
+                    .contentTransition(.symbolEffect(.replace))
+                    .foregroundStyle(.appPurple)
             }
             .disabled(!viewModel.isGenerating && draft.trimmingCharacters(in: .whitespaces).isEmpty)
             .accessibilityLabel(viewModel.isGenerating ? "Stop" : "Send")
@@ -151,21 +190,18 @@ private struct MessageBubble: View {
 
     var body: some View {
         HStack {
-            if message.role == .user { Spacer(minLength: 40) }
-            VStack(alignment: .leading, spacing: 4) {
-                Text(message.text.isEmpty ? "…" : message.text)
-                    .textSelection(.enabled)
-            }
-            .padding(12)
-            .frame(maxWidth: .infinity, alignment: message.role == .user ? .trailing : .leading)
-            .background(
-                message.role == .user
-                    ? AnyShapeStyle(.appAmber.opacity(0.85))
-                    : AnyShapeStyle(.background.secondary),
-                in: RoundedRectangle(cornerRadius: 16)
-            )
-            .foregroundStyle(message.role == .user ? .black : .primary)
-            if message.role == .assistant { Spacer(minLength: 40) }
+            if message.role == .user { Spacer(minLength: 48) }
+            Text(message.text.isEmpty ? "…" : message.text)
+                .textSelection(.enabled)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .foregroundStyle(message.role == .user ? Color.white : Color.primary)
+                .background(
+                    message.role == .user ? Color.appPurple : Color(.secondarySystemBackground),
+                    in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+                )
+            if message.role != .user { Spacer(minLength: 48) }
         }
+        .frame(maxWidth: .infinity)
     }
 }

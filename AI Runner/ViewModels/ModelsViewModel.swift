@@ -6,13 +6,14 @@
 import Foundation
 import SwiftUI
 
-/// A GGUF model file stored in the app's Documents/Models folder.
-struct ModelFile: Identifiable {
-    let id: UUID
-    let name: String
+/// A file stored in the app's Models folder.
+struct LocalModelFile: Identifiable, Hashable {
     let url: URL
     let sizeBytes: Int64
 
+    var id: URL { url }
+    var name: String { url.lastPathComponent }
+    var isLanguageModel: Bool { url.pathExtension.lowercased() == "gguf" }
     var formattedSize: String {
         ByteCountFormatter.string(fromByteCount: sizeBytes, countStyle: .file)
     }
@@ -20,72 +21,59 @@ struct ModelFile: Identifiable {
 
 @MainActor
 final class ModelsViewModel: ObservableObject {
-    @Published private(set) var models: [ModelFile] = []
-    @Published var newModelURL: String = ""
+    @Published private(set) var localFiles: [LocalModelFile] = []
+    @Published var searchText = ""
+    @Published private(set) var searchResults: [HFModel] = []
+    @Published private(set) var isSearching = false
+    @Published private(set) var searchError: String?
     @Published var importError: String?
-
-    let downloader = HFDownloader()
 
     init() {
         refresh()
     }
 
-    // MARK: - Local models
+    // MARK: - Local files
 
     func refresh() {
-        let directory = HFDownloader.modelsDirectory
-        let files = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.fileSizeKey], options: .skipsHiddenFiles)) ?? []
-        models = files
-            .filter { $0.pathExtension.lowercased() == "gguf" }
-            .map { url in
+        let urls = (try? FileManager.default.contentsOfDirectory(at: AppFolders.models,
+                                                                 includingPropertiesForKeys: [.fileSizeKey],
+                                                                 options: [.skipsHiddenFiles])) ?? []
+        localFiles = urls
+            .map { url -> LocalModelFile in
                 let size = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0
-                return ModelFile(id: UUID(), name: url.lastPathComponent, url: url, sizeBytes: Int64(size))
+                return LocalModelFile(url: url, sizeBytes: Int64(size))
             }
-            .sorted { $0.name < $1.name }
+            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
 
-    func delete(_ model: ModelFile) {
-        try? FileManager.default.removeItem(at: model.url)
+    func delete(_ file: LocalModelFile) {
+        try? FileManager.default.removeItem(at: file.url)
         refresh()
     }
 
-    // MARK: - Downloads
-
-    func downloadFromTextField(settings: AppSettings, completion: (() -> Void)? = nil) {
-        let text = newModelURL.trimmingCharacters(in: .whitespacesAndNewlines)
+    func importFromFilesApp(_ url: URL) {
         importError = nil
-        guard let url = URL(string: text), url.scheme == "http" || url.scheme == "https" else {
-            importError = "Enter a valid http(s) URL to a .gguf file."
-            return
-        }
-        download(from: url, token: settings.huggingFaceToken, completion: completion)
-    }
-
-    func download(from url: URL, token: String?, completion: (() -> Void)? = nil) {
-        downloader.startDownload(from: url, token: token) { [weak self] result in
-            switch result {
-            case .success:
-                self?.refresh()
-            case .failure(let error):
-                self?.importError = error.localizedDescription
-            }
-            completion?()
-        }
-    }
-
-    func importFromFilesApp(_ url: URL, securityScoped: Bool) {
-        importError = nil
-        let destination = HFDownloader.modelsDirectory.appendingPathComponent(url.lastPathComponent)
         do {
-            if securityScoped { _ = url.startAccessingSecurityScopedResource() }
-            defer { if securityScoped { url.stopAccessingSecurityScopedResource() } }
-            if FileManager.default.fileExists(atPath: destination.path) {
-                try FileManager.default.removeItem(at: destination)
-            }
-            try FileManager.default.copyItem(at: url, to: destination)
+            try FileStore.importFile(url, into: AppFolders.models)
             refresh()
         } catch {
             importError = error.localizedDescription
+        }
+    }
+
+    // MARK: - Hugging Face search
+
+    func search(token: String?) async {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return }
+        isSearching = true
+        searchError = nil
+        defer { isSearching = false }
+        do {
+            searchResults = try await HuggingFaceAPI.search(query, token: token)
+        } catch {
+            searchResults = []
+            searchError = "The search failed. Check your connection and try again."
         }
     }
 }

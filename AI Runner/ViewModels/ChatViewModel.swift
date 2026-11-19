@@ -22,6 +22,11 @@ final class ChatViewModel: ObservableObject {
     private let legacyStorageKey = "chatHistory"
     private let currentKey = "currentConversationID"
 
+    /// The most tool commands one reply may run, so a model can never loop forever.
+    private static let maxToolRounds = 8
+    /// The longest tool output sent back to the model, in characters.
+    private static let maxToolOutput = 12_000
+
     private static var storageURL: URL {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("chats.json")
@@ -37,7 +42,7 @@ final class ChatViewModel: ObservableObject {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !isGenerating else { return }
         guard runner.isModelLoaded else {
-            errorText = "No model loaded. Open the Models tab and load a GGUF model first."
+            errorText = "No model loaded. Open the Models tab and load a language model first."
             return
         }
 
@@ -129,9 +134,11 @@ final class ChatViewModel: ObservableObject {
 
     // MARK: - Conversation loop
 
+    /// Generates a reply. When the reply asks for a tool, the app runs it, feeds the
+    /// result back to the model and lets it continue, until it answers without a tool.
     private func runConversation(runner: LlamaRunner, settings: AppSettings) async {
-        var fetchCount = 0
-        var lastUserMessage = pendingUserText
+        var toolRounds = 0
+        var userMessage = pendingUserText
 
         while !Task.isCancelled {
             var reply = ""
@@ -140,7 +147,7 @@ final class ChatViewModel: ObservableObject {
 
             do {
                 let history = Array(messages.dropLast())
-                let stream = try await runner.generateStream(userMessage: lastUserMessage,
+                let stream = try await runner.generateStream(userMessage: userMessage,
                                                              history: history,
                                                              settings: settings)
                 for try await delta in stream {
@@ -148,35 +155,22 @@ final class ChatViewModel: ObservableObject {
                     updateMessage(id: assistant.id, text: reply)
                 }
 
-                // If the model asked for a web page, fetch it and let it continue.
-                if settings.webAccessEnabled, fetchCount < 2, let url = WebTool.extractCommand(from: reply) {
-                    statusText = "Fetching \(url.host ?? url.absoluteString)…"
-                    fetchCount += 1
-                    usedWebInCurrent = true
-                    let clean = WebTool.strippingCommand(from: reply)
-                    updateMessage(id: assistant.id, text: clean)
-                    do {
-                        let page = try await WebTool.fetchText(from: url)
-                        updateMessage(id: assistant.id, text: clean + "\n\n✓ Fetched page")
-                        lastUserMessage = """
-                        Web page content from \(url.absoluteString):
+                let parsed = settings.webAccessEnabled
+                    ? ToolParser.parse(reply)
+                    : ParsedReply(visibleText: reply.trimmingCharacters(in: .whitespacesAndNewlines), call: nil)
+                updateMessage(id: assistant.id, text: parsed.visibleText)
 
-                        \(page)
+                guard let call = parsed.call, toolRounds < Self.maxToolRounds else { break }
 
-                        Using the page content above, continue and finish your answer.
-                        """
-                        continue
-                    } catch {
-                        updateMessage(id: assistant.id, text: clean + "\n\n(Failed to fetch the page: \(error.localizedDescription))")
-                        break
-                    }
-                }
-
-                if settings.webAccessEnabled {
-                    let clean = WebTool.strippingCommand(from: reply)
-                    updateMessage(id: assistant.id, text: clean.isEmpty ? reply : clean)
-                }
-                break
+                toolRounds += 1
+                usedWebInCurrent = true
+                statusText = call.statusLabel
+                let output = await ToolExecutor.run(call, settings: settings)
+                let done = output.hasPrefix("Error") ? "✕ \(call.name) failed" : "✓ \(call.name) finished"
+                let lead = parsed.visibleText.isEmpty ? "" : parsed.visibleText + "\n\n"
+                updateMessage(id: assistant.id, text: lead + done)
+                userMessage = Self.toolResultPrompt(for: call, output: output)
+                statusText = "Thinking…"
             } catch is CancellationError {
                 if reply.isEmpty {
                     removeMessage(id: assistant.id)
@@ -194,6 +188,20 @@ final class ChatViewModel: ObservableObject {
         statusText = nil
         isGenerating = false
         saveCurrent()
+    }
+
+    /// The message that carries a tool's result back to the model.
+    static func toolResultPrompt(for call: ToolCall, output: String) -> String {
+        let shown = output.count > maxToolOutput
+            ? String(output.prefix(maxToolOutput)) + "\n…(output shortened)"
+            : output
+        return """
+        Result of \(call.name):
+
+        \(shown)
+
+        Continue your answer using this result. Use another tool only if you still need one.
+        """
     }
 
     // MARK: - Message helpers

@@ -61,13 +61,12 @@ struct ConversationsDrawerView: View {
                         .padding(.vertical, 6)
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(.appAmber)
-                .foregroundStyle(.black)
+                .tint(.appPurple)
+                .foregroundStyle(.white)
                 .padding()
                 .background(.bar)
             }
         }
-        .preferredColorScheme(.dark)
     }
 }
 
@@ -79,7 +78,7 @@ private struct ConversationRow: View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: "bubble.left")
                 .font(.title3)
-                .foregroundStyle(.appAmber)
+                .foregroundStyle(.appPurple)
                 .padding(.top, 2)
 
             VStack(alignment: .leading, spacing: 4) {
@@ -92,8 +91,8 @@ private struct ConversationRow: View {
                             .font(.caption2.weight(.semibold))
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
-                            .background(Color.appAmber.opacity(0.9), in: Capsule())
-                            .foregroundStyle(.black)
+                            .background(Color.appPurple.opacity(0.9), in: Capsule())
+                            .foregroundStyle(.white)
                     }
                 }
                 Text(conversation.messages.last?.text ?? "Empty conversation")
@@ -109,7 +108,7 @@ private struct ConversationRow: View {
 
             if isCurrent {
                 Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(.appAmber)
+                    .foregroundStyle(.appPurple)
                     .accessibilityLabel("Current conversation")
             }
         }

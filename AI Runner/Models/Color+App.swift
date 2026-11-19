@@ -6,10 +6,10 @@
 import SwiftUI
 
 extension Color {
-    /// The app's signature amber, matching the smiley icon.
-    static let appAmber = Color(red: 1.0, green: 0.78, blue: 0.18)
+    /// The app's purple accent. It follows the AccentColor asset, so light and dark mode both stay purple.
+    static var appPurple: Color { .accentColor }
 }
 
 extension ShapeStyle where Self == Color {
-    static var appAmber: Color { .appAmber }
+    static var appPurple: Color { .appPurple }
 }

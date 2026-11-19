@@ -22,18 +22,22 @@ struct ContentView: View {
                     Label("Models", systemImage: "cube.transparent")
                 }
 
-            ImageGenerationView(settings: settings)
+            CreateView(settings: settings)
                 .tabItem {
-                    Label("Image", systemImage: "photo.on.rectangle.angled")
+                    Label("Create", systemImage: "sparkles")
                 }
 
-            SettingsView(settings: settings, runner: runner)
+            BrowserView()
                 .tabItem {
-                    Label("Settings", systemImage: "gearshape")
+                    Label("Browser", systemImage: "globe")
+                }
+
+            FilesView()
+                .tabItem {
+                    Label("Files", systemImage: "folder")
                 }
         }
-        .tint(.appAmber)
-        .preferredColorScheme(.dark)
+        .tint(.appPurple)
     }
 }
 

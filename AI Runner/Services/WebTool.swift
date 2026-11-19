@@ -5,41 +5,8 @@
 
 import Foundation
 
-/// Lets a local model read web pages: the model can ask for a page by
-/// emitting a `FETCH <url>` line, which the app detects, downloads,
-/// and feeds back as context.
+/// Reads web pages as plain text for the model's FETCH command.
 enum WebTool {
-    static let commandPrefix = "FETCH"
-    static let instruction = """
-    You have web access. When you need current information or a specific web page, \
-    reply with a single line in the form `FETCH https://example.com/page`. \
-    The app will download the page and show it to you; then continue your answer using it. \
-    Only use FETCH when you actually need the page.
-    """
-
-    /// Finds the first `FETCH <url>` command in a model response.
-    static func extractCommand(from text: String) -> URL? {
-        for line in text.split(separator: "\n") {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            guard trimmed.uppercased().hasPrefix(commandPrefix) else { continue }
-            let candidate = trimmed.dropFirst(commandPrefix.count)
-                .trimmingCharacters(in: .whitespaces)
-                .replacingOccurrences(of: "`", with: "")
-            if let url = URL(string: candidate), url.scheme == "http" || url.scheme == "https" {
-                return url
-            }
-        }
-        return nil
-    }
-
-    /// Removes the FETCH command (and anything after it) from the visible reply.
-    static func strippingCommand(from text: String) -> String {
-        guard let range = text.range(of: "\n\(commandPrefix)", options: .caseInsensitive) ?? text.range(of: commandPrefix, options: .caseInsensitive) else {
-            return text
-        }
-        return String(text[..<range.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
     /// Downloads a web page and returns readable plain text.
     static func fetchText(from url: URL, maxCharacters: Int = 12_000) async throws -> String {
         var request = URLRequest(url: url)
@@ -91,5 +58,14 @@ enum WebTool {
             .filter { !$0.isEmpty }
             .joined(separator: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
+extension HTTPURLResponse {
+    /// A response header by name, matched without regard to case.
+    func headerValue(_ name: String) -> String? {
+        allHeaderFields
+            .first { ($0.key as? String)?.caseInsensitiveCompare(name) == .orderedSame }?
+            .value as? String
     }
 }

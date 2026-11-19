@@ -76,6 +76,17 @@ class ApiKeyManager {
     func has(key: String) -> Bool {
         return get(key: key) != nil
     }
+
+    /// Stores a value the user typed in the app (a token, say) in the Keychain.
+    @discardableResult
+    func set(key: String, value: String) -> Bool {
+        return save(key: key, value: value)
+    }
+
+    /// Removes a value stored with set(key:value:).
+    func remove(key: String) {
+        _ = delete(key: key)
+    }
     
     // MARK: - Private Methods
     

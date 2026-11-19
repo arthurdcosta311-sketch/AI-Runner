@@ -8,6 +8,9 @@ on:
 permissions:
   contents: write
 
+env:
+  RELEASE_TAG: v2.0
+
 jobs:
   build:
     runs-on: macos-26
@@ -50,13 +53,20 @@ jobs:
           name: AI-Runner-ipa
           path: AI-Runner.ipa
 
-      - name: Attach IPA to a release
+      - name: Attach IPA to the v2.0 release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "build-${{ github.run_number }}" \
-            "AI-Runner.ipa#AI-Runner.ipa" \
-            --title "AI Runner build #${{ github.run_number }}" \
-            --notes "Automated unsigned build of commit ${{ github.sha }}. Install by unpacking and signing with your own Apple ID (e.g. AltStore, Sideloadly)." \
-            --target "${{ github.sha }}" \
-            --repo "${{ github.repository }}"
+          NOTES="Unsigned iPhone build of commit ${{ github.sha }}. Re-sign it with your own Apple ID (AltStore, Sideloadly, TrollStore) to install."
+          if gh release view "$RELEASE_TAG" --repo "${{ github.repository }}" > /dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" AI-Runner.ipa --clobber --repo "${{ github.repository }}"
+            gh release edit "$RELEASE_TAG" --title "AI Runner $RELEASE_TAG" --notes "$NOTES" --repo "${{ github.repository }}"
+          else
+            gh release create "$RELEASE_TAG" \
+              "AI-Runner.ipa#AI-Runner-$RELEASE_TAG.ipa" \
+              --title "AI Runner $RELEASE_TAG" \
+              --notes "$NOTES" \
+              --latest \
+              --target "${{ github.sha }}" \
+              --repo "${{ github.repository }}"
+          fi

@@ -68,7 +68,7 @@ final class LlamaRunner: ObservableObject {
 
         var systemPrompt = settings.systemPrompt
         if settings.webAccessEnabled {
-            systemPrompt += "\n\n" + WebTool.instruction
+            systemPrompt += "\n\n" + ToolParser.instruction(for: settings)
         }
 
         let chatHistory = Self.historyPairs(from: history)
