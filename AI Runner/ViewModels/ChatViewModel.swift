@@ -41,6 +41,10 @@ final class ChatViewModel: ObservableObject {
     func send(_ text: String, runner: LlamaRunner, settings: AppSettings) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !isGenerating else { return }
+        guard !runner.isLoadingModel else {
+            errorText = "The model is still loading. Give it a few seconds."
+            return
+        }
         guard runner.isModelLoaded else {
             errorText = "No model loaded. Open the Models tab and load a language model first."
             return

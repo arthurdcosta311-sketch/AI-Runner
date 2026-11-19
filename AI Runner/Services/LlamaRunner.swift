@@ -39,6 +39,8 @@ enum JITStatus {
 /// Runs a local GGUF model through llama.cpp.
 final class LlamaRunner: ObservableObject {
     @Published private(set) var isModelLoaded = false
+    @Published private(set) var isLoadingModel = false
+    @Published private(set) var loadingModelName: String?
     @Published private(set) var loadedModelName: String?
     @Published private(set) var lastDiagnostics: String = ""
 
@@ -48,9 +50,13 @@ final class LlamaRunner: ObservableObject {
     // MARK: - Model lifecycle
 
     /// Checks that the file is a model this engine can run, then loads it.
-    func loadModel(at url: URL, settings: AppSettings) throws {
+    ///
+    /// llama.cpp maps the weights and builds the context in one long call, so it
+    /// runs on a background task: the app stays responsive and shows progress
+    /// instead of freezing for the seconds a multi-gigabyte model takes to load.
+    func loadModel(at url: URL, settings: AppSettings) async throws {
         if isModelLoaded, loadedPath == url.path { return }
-        unload()
+        if isLoadingModel { return }
 
         let name = url.lastPathComponent
         guard FileManager.default.fileExists(atPath: url.path) else {
@@ -68,11 +74,24 @@ final class LlamaRunner: ObservableObject {
             throw LlamaRunnerError.unsupportedArchitecture(fileName: name, architecture: architecture)
         }
 
+        // Release the previous engine first so its weights are not held while
+        // the new ones are mapped in.
+        unload()
+        isLoadingModel = true
+        loadingModelName = name
+        defer {
+            isLoadingModel = false
+            loadingModelName = nil
+        }
+
+        let path = url.path
+        let configuration = settings.makeConfiguration()
         do {
-            let engine = try SwiftLlama(modelPath: url.path,
-                                        modelConfiguration: settings.makeConfiguration())
+            let engine = try await Task.detached(priority: .userInitiated) {
+                try SwiftLlama(modelPath: path, modelConfiguration: configuration)
+            }.value
             llama = engine
-            loadedPath = url.path
+            loadedPath = path
             loadedModelName = name
             isModelLoaded = true
             if settings.jitDebugEnabled {

@@ -98,12 +98,25 @@ struct ModelsView: View {
 
     private var loadedSection: some View {
         Section {
+            if runner.isLoadingModel, let name = runner.loadingModelName {
+                HStack(spacing: 12) {
+                    ProgressView()
+                        .tint(.appPurple)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Loading \(name)")
+                            .font(.subheadline.weight(.semibold))
+                        Text("Reading the weights and building the context. This takes a few seconds, and the app stays usable meanwhile.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
             if runner.isModelLoaded {
                 LabeledContent("Loaded", value: runner.loadedModelName ?? "Unknown")
                 Button("Unload model", role: .destructive) {
                     runner.unload()
                 }
-            } else {
+            } else if !runner.isLoadingModel {
                 Text("No language model loaded. Download one below, then tap Load.")
                     .foregroundStyle(.secondary)
             }
@@ -198,17 +211,25 @@ struct ModelsView: View {
                     Spacer()
                     if file.isLanguageModel {
                         let isLoaded = runner.loadedModelName == file.name
-                        Button(isLoaded ? "Loaded" : "Load") {
-                            do {
-                                settings.template = PromptTemplate.guess(for: file.name)
-                                try runner.loadModel(at: file.url, settings: settings)
-                            } catch {
-                                modelsViewModel.importError = error.localizedDescription
+                        let isLoadingThis = runner.loadingModelName == file.name
+                        if isLoadingThis {
+                            ProgressView()
+                                .tint(.appPurple)
+                        } else {
+                            Button(isLoaded ? "Loaded" : "Load") {
+                                Task {
+                                    do {
+                                        settings.template = PromptTemplate.guess(for: file.name)
+                                        try await runner.loadModel(at: file.url, settings: settings)
+                                    } catch {
+                                        modelsViewModel.importError = error.localizedDescription
+                                    }
+                                }
                             }
+                            .buttonStyle(.bordered)
+                            .tint(.appPurple)
+                            .disabled(isLoaded || !file.isSupported || runner.isLoadingModel)
                         }
-                        .buttonStyle(.bordered)
-                        .tint(.appPurple)
-                        .disabled(isLoaded || !file.isSupported)
                     }
                 }
                 .swipeActions {

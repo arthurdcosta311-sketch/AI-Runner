@@ -21,7 +21,10 @@ struct ChatView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                if !runner.isModelLoaded {
+                if runner.isLoadingModel {
+                    loadingBanner
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                } else if !runner.isModelLoaded {
                     loadPromptBanner
                         .transition(.move(edge: .top).combined(with: .opacity))
                 }
@@ -31,6 +34,7 @@ struct ChatView: View {
             }
             .background(Color(.systemGroupedBackground).ignoresSafeArea())
             .animation(.smooth, value: runner.isModelLoaded)
+            .animation(.smooth, value: runner.isLoadingModel)
             .animation(.smooth, value: viewModel.statusText)
             .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
                 withAnimation(.smooth(duration: 0.2)) { keyboardVisible = true }
@@ -94,6 +98,25 @@ struct ChatView: View {
     }
 
     // MARK: - Sections
+
+    private var loadingBanner: some View {
+        HStack(spacing: 12) {
+            ProgressView()
+                .tint(.appPurple)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Loading \(runner.loadingModelName ?? "model")")
+                    .font(.subheadline.weight(.semibold))
+                Text("The app stays usable while the weights load.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+        }
+        .padding(14)
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .padding(.horizontal)
+        .padding(.top, 8)
+    }
 
     private var loadPromptBanner: some View {
         HStack(spacing: 12) {
