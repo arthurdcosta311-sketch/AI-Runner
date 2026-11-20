@@ -50,6 +50,12 @@ enum JITStatus {
 }
 
 /// Runs a local GGUF model through llama.cpp.
+///
+/// Main-actor bound because every published value here drives SwiftUI: setting
+/// `@Published` state from a background thread is what makes SwiftUI updates
+/// arrive out of order, and the heavy work (loading, decoding) is pushed off to
+/// detached tasks instead of the state being pushed off the actor.
+@MainActor
 final class LlamaRunner: ObservableObject {
     @Published private(set) var isModelLoaded = false
     @Published private(set) var isLoadingModel = false
@@ -172,15 +178,17 @@ final class LlamaRunner: ObservableObject {
             throw LlamaRunnerError.lowMemory(availableBytes: available)
         }
 
-        // SwiftLlama tokenizes the whole prompt and decodes it in one batch before
-        // the first token exists, and its model wrapper stops once prompt plus reply
-        // reaches 1024 tokens. Keeping the prompt small is what makes the first
-        // token appear in seconds instead of a minute, so the budget is computed in
-        // tokens, from the same limits the engine was configured with.
+        // SwiftLlama tokenizes the whole prompt and runs one synchronous decode
+        // over it before the first token exists, and its model wrapper counts
+        // prompt and reply together against a hard 1024-token budget. So the
+        // prompt is capped in tokens — long enough for the system prompt, the
+        // tools instructions and a little history, short enough that the model
+        // starts writing in seconds — and leaves the rest of the budget for the
+        // reply. Their bridge does the same arithmetic against its own context.
         let configuration = settings.makeConfiguration()
         let context = configuration.nCTX
-        let replyTokens = configuration.maxTokenCount
-        let promptTokenBudget = max(192, min(context - replyTokens - 64, 1024 - replyTokens))
+        let totalBudget = min(configuration.maxTokenCount, 1024)
+        let promptTokenBudget = max(160, min(384, context - 256, totalBudget - 192))
         // Characters per token: about 3.2 for English, and the slack covers the
         // chat template's own markers.
         let promptCharacters = Int(Double(promptTokenBudget) * 3.2)
@@ -189,8 +197,11 @@ final class LlamaRunner: ObservableObject {
         if settings.webAccessEnabled {
             systemPrompt += "\n\n" + ToolParser.instruction(for: settings)
         }
-        if systemPrompt.count > promptCharacters / 2 {
-            systemPrompt = String(systemPrompt.prefix(promptCharacters / 2))
+        // The system prompt carries the tools list, so it is cut at a line
+        // boundary rather than mid-sentence when the budget is tight.
+        let systemBudget = Int(Double(promptCharacters) * 0.65)
+        if systemPrompt.count > systemBudget {
+            systemPrompt = Self.truncated(systemPrompt, to: systemBudget)
         }
 
         var user = userMessage
@@ -207,35 +218,45 @@ final class LlamaRunner: ObservableObject {
                             userMessage: user,
                             history: chatHistory)
 
-        let upstream: AsyncThrowingStream<String, Error>
+        // Keep the engine latched as busy for as long as the reply streams, so a
+        // second send can never start a decode while llama.cpp is still working:
+        // two concurrent decodes on one context abort the process. The latch is
+        // cleared by `endGeneration()` when the turn's stream has been drained.
         isGenerating = true
         do {
-            upstream = try await llama.start(for: prompt)
+            let engine = llama
+            // ios-local-llm's GGUF path puts the whole decode on the GPU, which
+            // leaves the CPU free for the interface. This engine is CPU-only
+            // (SwiftLlama never raises n_gpu_layers), so the decode is started at
+            // utility priority instead: its threads give way to the main thread
+            // and the app keeps responding while the reply is written. The inner
+            // decode task inherits this priority from the task that starts it.
+            let stream = try await Task.detached(priority: .utility) { () throws
+                -> AsyncThrowingStream<String, Error> in
+                let tokens: AsyncThrowingStream<String, Error> = try await engine.start(for: prompt)
+                return tokens
+            }.value
+            return stream
         } catch {
             isGenerating = false
             throw error
         }
+    }
 
-        // Keep the engine latched as busy for as long as the reply streams, so a
-        // second send can never start a decode while llama.cpp is still working:
-        // two concurrent decodes on one context abort the process.
-        return AsyncThrowingStream { continuation in
-            Task {
-                defer {
-                    DispatchQueue.main.async {
-                        self.isGenerating = false
-                    }
-                }
-                do {
-                    for try await delta in upstream {
-                        continuation.yield(delta)
-                    }
-                    continuation.finish()
-                } catch {
-                    continuation.finish(throwing: error)
-                }
-            }
+    /// Clears the busy latch once a turn has finished or been abandoned.
+    func endGeneration() {
+        isGenerating = false
+    }
+
+    /// Cuts text to at most `limit` characters, preferring the last whole line so
+    /// an instruction is never left half-written.
+    static func truncated(_ text: String, to limit: Int) -> String {
+        guard text.count > limit else { return text }
+        let head = String(text.prefix(limit))
+        if let lastNewline = head.lastIndex(of: "\n"), head.distance(from: head.startIndex, to: lastNewline) > limit / 2 {
+            return String(head[head.startIndex..<lastNewline])
         }
+        return head
     }
 
     /// Pairs consecutive user/assistant messages into the engine's history format,

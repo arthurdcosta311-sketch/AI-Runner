@@ -22,7 +22,7 @@ Add your token in the Models tab. It is stored in the keychain. It is used for g
 
 ## Builds
 
-GitHub Actions builds the app on every push to `main`. The unsigned IPA is uploaded to the run's **Actions** tab, and attached to the **v2.4** release on the Releases page, where later builds update the same release.
+GitHub Actions builds the app on every push to `main`. The unsigned IPA is uploaded to the run's **Actions** tab, and attached to the **v2.6** release on the Releases page, where later builds update the same release.
 
 ## Development
 

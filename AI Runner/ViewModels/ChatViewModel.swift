@@ -74,7 +74,7 @@ final class ChatViewModel: ObservableObject {
         messages.append(ChatMessage(role: .user, text: trimmed))
         saveCurrent()
         errorText = nil
-        statusText = "Thinking…"
+        statusText = "Reading…"
         elapsedSeconds = 0
         isGenerating = true
         startTicker()
@@ -241,7 +241,7 @@ final class ChatViewModel: ObservableObject {
                 let lead = parsed.visibleText.isEmpty ? "" : parsed.visibleText + "\n\n"
                 updateMessage(id: assistant.id, text: lead + done)
                 userMessage = Self.toolResultPrompt(for: call, output: output)
-                statusText = "Thinking…"
+                statusText = "Reading…"
             } catch is CancellationError {
                 if reply.isEmpty {
                     removeMessage(id: assistant.id)
