@@ -71,45 +71,50 @@ final class ChatTurnRunner: @unchecked Sendable {
             lock.lock()
             running = false
             lock.unlock()
-            // Clears the engine's busy latch on the main actor, where the
-            // published state lives.
-            Task { @MainActor in engine.endGeneration() }
         }
 
-        let stream = try await runner.generateStream(userMessage: userMessage,
-                                                     history: history,
-                                                     settings: settings)
+        do {
+            let stream = try await runner.generateStream(userMessage: userMessage,
+                                                         history: history,
+                                                         settings: settings)
 
-        var full = ""
-        var pending = ""
-        var sentFirst = false
-        var lastFlush = Date.distantPast
+            var full = ""
+            var pending = ""
+            var sentFirst = false
+            var lastFlush = Date.distantPast
 
-        for try await delta in stream {
-            full += delta
-            pending += delta
+            for try await delta in stream {
+                full += delta
+                pending += delta
 
-            guard !isStopped else { continue }
+                guard !isStopped else { continue }
 
-            let now = Date()
-            let due = !sentFirst
-                || pending.count >= flushCharacters
-                || now.timeIntervalSince(lastFlush) >= flushInterval
-            guard due else { continue }
+                let now = Date()
+                let due = !sentFirst
+                    || pending.count >= flushCharacters
+                    || now.timeIntervalSince(lastFlush) >= flushInterval
+                guard due else { continue }
 
-            sentFirst = true
-            pending = ""
-            lastFlush = now
-            let text = full
-            await MainActor.run { onUpdate(text) }
-            // Gives the interface a turn between flushes rather than queueing
-            // the next token behind the redraw.
-            await Task.yield()
+                sentFirst = true
+                pending = ""
+                lastFlush = now
+                let text = full
+                await MainActor.run { onUpdate(text) }
+                // Gives the interface a turn between flushes rather than queueing
+                // the next token behind the redraw.
+                await Task.yield()
+            }
+
+            let final = full
+            await MainActor.run { onUpdate(final) }
+            await MainActor.run { engine.endGeneration() }
+            return full
+        } catch {
+            // Cleared here rather than in a fire-and-forget task, so it can never
+            // land after the next turn has already taken the latch.
+            await MainActor.run { engine.endGeneration() }
+            throw error
         }
-
-        let final = full
-        await MainActor.run { onUpdate(final) }
-        return full
     }
 
     private var isStopped: Bool {
