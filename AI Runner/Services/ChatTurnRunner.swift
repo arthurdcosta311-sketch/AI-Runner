@@ -18,7 +18,7 @@ final class ChatTurnRunner {
     /// How often partial text is pushed into the UI. Per-token updates redraw
     /// the whole message list hundreds of times per answer, which is what made
     /// the chat look frozen.
-    private let updateInterval: TimeInterval = 0.08
+    private let updateInterval: TimeInterval = 0.1
 
     init(runner: LlamaRunner) {
         self.runner = runner

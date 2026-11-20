@@ -105,10 +105,15 @@ final class AppSettings: ObservableObject {
         case .alpaca: stopTokens = []
         }
 
+        // SwiftLlama decodes the whole prompt in one batch and counts it against a
+        // hard 1024-token budget shared with the reply, so the context stays in a
+        // range those limits can serve, and the reply never exceeds what is left.
+        let context = min(4096, max(512, contextSize))
         return Configuration(
-            nCTX: max(256, contextSize),
+            nCTX: context,
             temperature: Float(temperature),
-            maxTokenCount: max(64, maxTokens),
+            batchSize: min(context * 2, 4096),
+            maxTokenCount: min(512, max(64, maxTokens)),
             stopTokens: stopTokens
         )
     }

@@ -147,22 +147,20 @@ struct ChatView: View {
                 ScrollView {
                     LazyVStack(spacing: 12) {
                         ForEach(viewModel.messages) { message in
-                            MessageBubble(message: message)
+                            MessageBubble(message: message,
+                                          isStreaming: viewModel.isGenerating && message.id == viewModel.messages.last?.id)
                                 .id(message.id)
-                                .transition(.asymmetric(insertion: .move(edge: .bottom).combined(with: .opacity),
-                                                        removal: .opacity))
                         }
                     }
                     .padding()
-                    .animation(.smooth, value: viewModel.messages.count)
                 }
                 .scrollDismissesKeyboard(.interactively)
+                // Follow the newest text without animating: an animated scroll on
+                // every update kept restarting its own animation, which is what
+                // stalled the screen while a reply streamed.
                 .onChange(of: viewModel.messages) { _, _ in
-                    if let last = viewModel.messages.last {
-                        withAnimation(.smooth) {
-                            proxy.scrollTo(last.id, anchor: .bottom)
-                        }
-                    }
+                    guard let last = viewModel.messages.last else { return }
+                    proxy.scrollTo(last.id, anchor: .bottom)
                 }
             }
         }
@@ -184,9 +182,10 @@ struct ChatView: View {
         if let status = viewModel.statusText {
             HStack(spacing: 8) {
                 ProgressView()
-                Text(status)
+                Text(viewModel.elapsedSeconds > 0 ? "\(status) \(viewModel.elapsedSeconds)s" : status)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .monospacedDigit()
             }
             .padding(.horizontal)
             .transition(.opacity.combined(with: .move(edge: .bottom)))
@@ -253,21 +252,36 @@ struct ChatView: View {
 
 private struct MessageBubble: View {
     let message: ChatMessage
+    /// True for the message currently being written by the model.
+    let isStreaming: Bool
 
     var body: some View {
         HStack {
             if message.role == .user { Spacer(minLength: 48) }
-            Text(message.text.isEmpty ? "…" : message.text)
-                .textSelection(.enabled)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .foregroundStyle(message.role == .user ? Color.white : Color.primary)
-                .background(
-                    message.role == .user ? Color.appPurple : Color(.secondarySystemBackground),
-                    in: RoundedRectangle(cornerRadius: 18, style: .continuous)
-                )
+            bubble
             if message.role != .user { Spacer(minLength: 48) }
         }
         .frame(maxWidth: .infinity)
+    }
+
+    @ViewBuilder
+    private var bubble: some View {
+        let content = Text(message.text.isEmpty ? "…" : message.text)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .foregroundStyle(message.role == .user ? Color.white : Color.primary)
+            .background(
+                message.role == .user ? Color.appPurple : Color(.secondarySystemBackground),
+                in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+            )
+
+        // Selecting text in a bubble that changes ten times a second makes every
+        // update re-lay out a selection view, so only finished messages can be
+        // selected.
+        if isStreaming {
+            content.textSelection(.disabled)
+        } else {
+            content.textSelection(.enabled)
+        }
     }
 }

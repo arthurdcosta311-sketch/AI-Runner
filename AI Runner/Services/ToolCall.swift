@@ -53,22 +53,23 @@ struct ParsedReply {
 /// at the start of a line (FETCH, SEARCH, CURL, GITHUB, MCP), or `RUN JS` or
 /// `RUN LUA` followed by a fenced code block. Lines inside other code blocks are ignored.
 enum ToolParser {
-    /// The instructions that teach the model its tools. Sent with every message when tools are on.
+    /// The instructions that teach the model its tools. Sent with every message when
+    /// tools are on, so it is kept short: every word here is paid for on every turn
+    /// by a model that has to read the whole prompt before it can reply.
     static func instruction(for settings: AppSettings) -> String {
         var lines = [
-            "You have tools. To use one, write exactly one command on its own line and stop. The app runs it and sends you the result, then you continue your answer from that result. Use a tool only when you need it, and never invent a tool result.",
-            "FETCH <url>: read a web page as text.",
-            "SEARCH <query>: search the web with the Focus search engine. You get titles, links and snippets.",
-            "CURL [GET|POST|HEAD] <url>: make an HTTP request and see the status and body.",
-            "RUN JS, on the line after it a ```js code block: run JavaScript on the phone and get what console.log prints.",
-            "RUN LUA, on the line after it a ```lua code block: run Lua on the phone and get what print prints.",
+            "You have tools. To use one, write one command on its own line and stop. The app runs it and sends you the result; then finish your answer.",
+            "FETCH <url> reads a page.",
+            "SEARCH <query> searches the web.",
+            "CURL [GET|POST|HEAD] <url> makes a request.",
+            "RUN JS or RUN LUA, followed by a code block, runs that code on the phone.",
         ]
         if settings.hasGitHubToken {
-            lines.append("GITHUB <api path>: call the GitHub REST API with the user's token, for example GITHUB repos/apple/swift/issues.")
+            lines.append("GITHUB <api path> calls the GitHub API.")
         }
         if !settings.mcpServers.isEmpty {
             let names = settings.mcpServers.map(\.name).joined(separator: ", ")
-            lines.append("MCP <server> <tool> <json arguments>: call a tool on a connected MCP server. Connected servers: \(names). Use MCP <server> list to see a server's tools.")
+            lines.append("MCP <server> <tool> <json> calls an MCP server. Servers: \(names). Use MCP <server> list for its tools.")
         }
         return lines.joined(separator: "\n")
     }

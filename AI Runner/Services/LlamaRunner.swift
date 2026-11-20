@@ -172,11 +172,18 @@ final class LlamaRunner: ObservableObject {
             throw LlamaRunnerError.lowMemory(availableBytes: available)
         }
 
-        let context = max(256, settings.contextSize)
-        let replyTokens = max(64, min(settings.maxTokens, context / 2))
-        // Characters, not tokens: three per token is a safe guess for English, and
-        // the slack covers the chat template's own markers.
-        let promptCharacters = max(400, (context - replyTokens - 64) * 3)
+        // SwiftLlama tokenizes the whole prompt and decodes it in one batch before
+        // the first token exists, and its model wrapper stops once prompt plus reply
+        // reaches 1024 tokens. Keeping the prompt small is what makes the first
+        // token appear in seconds instead of a minute, so the budget is computed in
+        // tokens, from the same limits the engine was configured with.
+        let configuration = settings.makeConfiguration()
+        let context = configuration.nCTX
+        let replyTokens = configuration.maxTokenCount
+        let promptTokenBudget = max(192, min(context - replyTokens - 64, 1024 - replyTokens))
+        // Characters per token: about 3.2 for English, and the slack covers the
+        // chat template's own markers.
+        let promptCharacters = Int(Double(promptTokenBudget) * 3.2)
 
         var systemPrompt = settings.systemPrompt
         if settings.webAccessEnabled {

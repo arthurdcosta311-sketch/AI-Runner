@@ -16,8 +16,12 @@ final class ChatViewModel: ObservableObject {
     @Published var showingDrawer = false
     @Published var statusText: String?
     @Published var errorText: String?
+    /// Seconds the current turn has been running, so the screen keeps proving it
+    /// is alive while the model works through a long message.
+    @Published private(set) var elapsedSeconds = 0
 
     private var generationTask: Task<Void, Never>?
+    private var ticker: Task<Void, Never>?
     /// Set when the user taps Stop. The reply keeps draining so the engine is
     /// never interrupted mid-decode: llama.cpp aborts the process if a second
     /// decode starts while one is still running.
@@ -71,11 +75,32 @@ final class ChatViewModel: ObservableObject {
         saveCurrent()
         errorText = nil
         statusText = "Thinking…"
+        elapsedSeconds = 0
         isGenerating = true
+        startTicker()
 
         generationTask = Task { [weak self] in
             await self?.runConversation(runner: runner, settings: settings)
         }
+    }
+
+    /// Counts the seconds a turn has been running. The label ticking over is what
+    /// shows the app is still working, rather than frozen, while the model reads
+    /// the message.
+    private func startTicker() {
+        ticker?.cancel()
+        ticker = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                guard let self, self.isGenerating else { return }
+                self.elapsedSeconds += 1
+            }
+        }
+    }
+
+    private func stopTicker() {
+        ticker?.cancel()
+        ticker = nil
     }
 
     /// Asks the reply to stop. The run keeps draining the engine's stream, so a
@@ -180,6 +205,9 @@ final class ChatViewModel: ObservableObject {
                                               history: history,
                                               settings: settings) { partial in
                     self.updateMessage(id: assistant.id, text: partial)
+                    if self.statusText != "Writing…" {
+                        self.statusText = "Writing…"
+                    }
                 }
 
                 if stopRequested {
@@ -230,6 +258,8 @@ final class ChatViewModel: ObservableObject {
 
         stopRequested = false
         statusText = nil
+        stopTicker()
+        elapsedSeconds = 0
         isGenerating = false
         saveCurrent()
     }
